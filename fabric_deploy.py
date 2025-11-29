@@ -28,7 +28,7 @@ def deploy():
         SLICE_NAME = 'ai-traffic-synth'
         # We need a site with Tesla T4 GPUs. NCSA or TACC usually have them.
         # site = fablib.get_random_site()
-        site = 'NCSA'
+        site = 'CLEMSON'
         print(f"Selected site: {site}")
 
         # Check if slice exists and delete it to avoid "Slice already exists" error
