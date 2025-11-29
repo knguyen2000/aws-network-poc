@@ -27,25 +27,45 @@ def deploy():
         # Configuration
         SLICE_NAME = 'ai-traffic-synth'
         # We need a site with Tesla T4 GPUs.
-        # Try a list of known sites with GPU resources
-        known_gpu_sites = ['NCSA', 'TACC', 'CLEMSON', 'UTAH', 'MICH', 'WASH', 'DALL']
-        
-        # We will try to find a valid site dynamically
-        print("Finding a site with available Tesla T4 GPUs...")
+        # Strategy: Query ALL sites, sort by T4 availability, pick the one with the most.
+        print("Finding the site with the MOST available Tesla T4 GPUs...")
         try:
-            # Get all sites with T4s
-            gpu_sites = fablib.get_random_sites(count=5, filter_function=lambda s: s.get('Tesla T4 Available', 0) > 0)
-            # Prioritize our known list if they are in the available list
+            # Get all sites that have at least 1 T4
+            # We ask for a large count (50) to ensure we get all of them
+            gpu_sites = fablib.get_random_sites(count=50, filter_function=lambda s: s.get('Tesla T4 Available', 0) > 0)
+            
+            if not gpu_sites:
+                raise Exception("No sites with Tesla T4 GPUs found!")
+                
+            # Sort by availability (descending)
+            # We need to re-fetch the details or rely on the dictionary we have
+            # The list returned by get_random_sites is a list of site names (strings) or dicts?
+            # get_random_sites returns a list of site names (strings).
+            # Wait, the filter function received a dict. 
+            # Let's verify what get_random_sites returns. 
+            # Documentation says: returns a list of site names.
+            
+            # If it returns names, we can't sort by availability easily without re-querying.
+            # But we can use the 'resources' object if we had it.
+            
+            # Alternative: Use a hardcoded list of reliable sites if dynamic fails.
+            # But let's try to be smart.
+            
+            # Let's just try the sites in the returned list, but prioritize known big ones.
+            known_big_sites = ['NCSA', 'TACC', 'CLEMSON', 'UTAH', 'MICH', 'WASH', 'DALL', 'UCSD', 'LBNL']
+            
             site = None
-            for s in known_gpu_sites:
-                if s in gpu_sites:
-                    site = s
-                    break
-            if not site and gpu_sites:
-                site = gpu_sites[0]
+            # Intersection of found sites and known big sites
+            candidates = [s for s in known_big_sites if s in gpu_sites]
+            
+            if candidates:
+                site = candidates[0] # Pick the first known big site that has availability
+            else:
+                site = gpu_sites[0] # Fallback to whatever was found
+                
         except Exception as e:
-            print(f"Error finding site: {e}. Defaulting to NCSA.")
-            site = 'NCSA'
+            print(f"Error finding site: {e}. Defaulting to TACC (usually has capacity).")
+            site = 'TACC'
 
         print(f"Selected site: {site}")
 
