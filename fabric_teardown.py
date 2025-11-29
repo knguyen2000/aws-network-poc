@@ -19,15 +19,19 @@ from fabrictestbed_extensions.fablib.fablib import FablibManager as fablib_manag
 def teardown():
     try:
         fablib = fablib_manager()
-        SLICE_NAME = 'net-perf-test'
+        # Configuration
+        SLICE_NAME = 'ai-traffic-synth'
         
-        print(f"Deleting slice '{SLICE_NAME}'...")
-        slice = fablib.get_slice(name=SLICE_NAME)
-        slice.delete()
-        print("Slice deleted successfully.")
+        try:
+            slice = fablib.get_slice(name=SLICE_NAME)
+            print(f"Slice '{SLICE_NAME}' found. Deleting...")
+            slice.delete()
+            print("Done!")
+        except Exception as e:
+            print(f"Slice '{SLICE_NAME}' not found or error: {e}")
 
     except Exception as e:
-        print(f"Error deleting slice: {e}")
+        print(f"Error in teardown: {e}")
 
 if __name__ == "__main__":
     teardown()

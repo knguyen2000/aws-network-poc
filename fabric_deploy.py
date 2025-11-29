@@ -25,12 +25,8 @@ def deploy():
         fablib = fablib_manager()
         
         # Configuration
-        SLICE_NAME = 'net-perf-test'
-        # We let FABRIC pick a random site with available resources, or you can specify one e.g. 'KAUST'
-        # site = fablib.get_random_site() 
-        # For simplicity in this script, we'll let the scheduler decide or pick a specific one if needed.
-        # Here we don't specify site in add_node, so it might pick random or error if not handled. 
-        # Best practice: pick a site.
+        SLICE_NAME = 'ai-traffic-synth'
+        # We need a site with Tesla T4 GPUs. NCSA or TACC usually have them.
         # site = fablib.get_random_site()
         site = 'NCSA'
         print(f"Selected site: {site}")
@@ -58,28 +54,30 @@ def deploy():
         slice = fablib.new_slice(name=SLICE_NAME)
 
         # ---------------------------------------------------------
-        # 1. Add Nodes (Server & Client)
+        # 1. Add Nodes (Generator/AI & Detector)
         # ---------------------------------------------------------
-        # Using Ubuntu 22.04 as a standard replacement for Amazon Linux
         image = 'default_ubuntu_22'
         
-        # Server Node
-        server = slice.add_node(name='server', site=site, image=image)
-        server.set_capacities(cores=2, ram=4)
+        # Node A: The AI Generator (Needs GPU)
+        print("Adding GPU Node (Generator)...")
+        generator = slice.add_node(name='generator', site=site, image=image)
+        generator.set_capacities(cores=4, ram=16) # More RAM for AI
+        generator.add_component(model='GPU_TeslaT4', name='gpu1')
         
-        # Client Node
-        client = slice.add_node(name='client', site=site, image=image)
-        client.set_capacities(cores=2, ram=4)
+        # Node B: The Detector (Standard CPU)
+        print("Adding CPU Node (Detector)...")
+        detector = slice.add_node(name='detector', site=site, image=image)
+        detector.set_capacities(cores=2, ram=8)
 
         # ---------------------------------------------------------
         # 2. Add Network (L2 Bridge)
         # ---------------------------------------------------------
         # We need interfaces on both nodes to connect them
-        server_iface = server.add_component(model='NIC_Basic', name='nic1').get_interfaces()[0]
-        client_iface = client.add_component(model='NIC_Basic', name='nic1').get_interfaces()[0]
+        gen_iface = generator.add_component(model='NIC_Basic', name='nic1').get_interfaces()[0]
+        det_iface = detector.add_component(model='NIC_Basic', name='nic1').get_interfaces()[0]
 
         # Create the L2 network connecting them
-        slice.add_l2network(name='net_a', interfaces=[server_iface, client_iface])
+        slice.add_l2network(name='net_a', interfaces=[gen_iface, det_iface])
 
         # ---------------------------------------------------------
         # 3. Submit Slice
@@ -93,40 +91,41 @@ def deploy():
         # ---------------------------------------------------------
         # Reload slice to get latest state
         slice = fablib.get_slice(name=SLICE_NAME)
-        server = slice.get_node('server')
-        client = slice.get_node('client')
+        generator = slice.get_node('generator')
+        detector = slice.get_node('detector')
         
         # Network config
         subnet = ipaddress.IPv4Network("192.168.1.0/24")
-        server_ip = ipaddress.IPv4Address("192.168.1.10")
-        client_ip = ipaddress.IPv4Address("192.168.1.11")
+        gen_ip = ipaddress.IPv4Address("192.168.1.10")
+        det_ip = ipaddress.IPv4Address("192.168.1.11")
 
-        server_iface = server.get_interface(network_name='net_a')
-        server_iface.ip_addr_add(addr=server_ip, subnet=subnet)
-        server_iface.ip_link_up()
+        gen_iface = generator.get_interface(network_name='net_a')
+        gen_iface.ip_addr_add(addr=gen_ip, subnet=subnet)
+        gen_iface.ip_link_up()
 
-        client_iface = client.get_interface(network_name='net_a')
-        client_iface.ip_addr_add(addr=client_ip, subnet=subnet)
-        client_iface.ip_link_up()
+        det_iface = detector.get_interface(network_name='net_a')
+        det_iface.ip_addr_add(addr=det_ip, subnet=subnet)
+        det_iface.ip_link_up()
 
         # ---------------------------------------------------------
-        # 5. Install Software (iperf3)
+        # 5. Install Software (Drivers & Tools)
         # ---------------------------------------------------------
-        print("Installing iperf3 on nodes...")
+        print("Installing software...")
         # Wait for SSH to be ready on all nodes
         slice.wait_ssh()
         
-        for node in [server, client]:
-            # Update apt and install iperf3
-            node.execute('sudo apt-get update && sudo apt-get install -y iperf3', quiet=False)
+        # Install basic tools on both
+        for node in [generator, detector]:
+            node.execute('sudo apt-get update && sudo apt-get install -y iperf3 python3-pip', quiet=False)
 
+        # Install GPU Drivers on Generator (This can take time, usually pre-installed on some images but good to check)
+        # For now, we just check if the card is visible. Installing full CUDA drivers takes ~10 mins, 
+        # so we'll skip the full install in this quick script and just verify the hardware exists.
+        
         print("\nDeployment Successful!")
         print("To access nodes:")
-        print(f"  ssh -i <slice_key> ubuntu@{server.get_management_ip()}")
-        print(f"  ssh -i <slice_key> ubuntu@{client.get_management_ip()}")
-        print("\nVerify connectivity:")
-        print("  From client: ping 192.168.1.10")
-        print("  From client: iperf3 -c 192.168.1.10")
+        print(f"  ssh -i <slice_key> ubuntu@{generator.get_management_ip()}")
+        print(f"  ssh -i <slice_key> ubuntu@{detector.get_management_ip()}")
 
         # ---------------------------------------------------------
         # 6. Automated Verification
@@ -134,23 +133,27 @@ def deploy():
         print("\nRunning Automated Verification...")
         
         # Ping Test
-        print("1. Ping Test (Client -> Server)")
+        print("1. Ping Test (Generator -> Detector)")
         try:
-            stdout, stderr = client.execute('ping -c 4 192.168.1.10')
+            stdout, stderr = generator.execute('ping -c 4 192.168.1.11')
             print(stdout)
         except Exception as e:
             print(f"Ping failed: {e}")
 
-        # iperf3 Test
-        print("2. iperf3 Test (Client -> Server)")
+        # GPU Verification
+        print("2. GPU Verification (Generator)")
         try:
-            # Start server in daemon mode
-            server.execute('iperf3 -s -D')
-            # Run client
-            stdout, stderr = client.execute('iperf3 -c 192.168.1.10')
+            # lspci should show the NVIDIA controller
+            stdout, stderr = generator.execute('lspci | grep -i nvidia')
+            print("PCI Device Found:")
+            print(stdout)
+            
+            # Check if nvidia-smi works (might fail if drivers aren't loaded yet, but that's okay for step 1)
+            stdout, stderr = generator.execute('nvidia-smi')
+            print("NVIDIA-SMI Output:")
             print(stdout)
         except Exception as e:
-            print(f"iperf3 failed: {e}")
+            print(f"GPU check failed (Drivers might need install): {e}")
 
         print("\nVerification Complete!")
 
