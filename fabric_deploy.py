@@ -27,10 +27,26 @@ def deploy():
         # Configuration
         SLICE_NAME = 'ai-traffic-synth'
         # We need a site with Tesla T4 GPUs.
-        # instead of hardcoding, we ask fablib to find one for us
+        # Try a list of known sites with GPU resources
+        known_gpu_sites = ['NCSA', 'TACC', 'CLEMSON', 'UTAH', 'MICH', 'WASH', 'DALL']
+        
+        # We will try to find a valid site dynamically
         print("Finding a site with available Tesla T4 GPUs...")
-        # Note: The filter function receives a dictionary, not a Site object
-        site = fablib.get_random_site(filter_function=lambda s: s.get('Tesla T4 Available', 0) > 0)
+        try:
+            # Get all sites with T4s
+            gpu_sites = fablib.get_random_sites(count=5, filter_function=lambda s: s.get('Tesla T4 Available', 0) > 0)
+            # Prioritize our known list if they are in the available list
+            site = None
+            for s in known_gpu_sites:
+                if s in gpu_sites:
+                    site = s
+                    break
+            if not site and gpu_sites:
+                site = gpu_sites[0]
+        except Exception as e:
+            print(f"Error finding site: {e}. Defaulting to NCSA.")
+            site = 'NCSA'
+
         print(f"Selected site: {site}")
 
         # Check if slice exists and delete it to avoid "Slice already exists" error
