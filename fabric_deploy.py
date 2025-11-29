@@ -113,9 +113,10 @@ def deploy():
         # 5. Install Software (iperf3)
         # ---------------------------------------------------------
         print("Installing iperf3 on nodes...")
+        # Wait for SSH to be ready on all nodes
+        slice.wait_ssh()
+        
         for node in [server, client]:
-            # Wait for SSH to be ready
-            node.wait_ssh()
             # Update apt and install iperf3
             node.execute('sudo apt-get update && sudo apt-get install -y iperf3', quiet=False)
 
