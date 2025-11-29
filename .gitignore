@@ -3,23 +3,23 @@ __pycache__/
 *.pyc
 venv/
 
-# Environment and Secrets
-.fabric/
+# FABRIC Credentials & Keys (CRITICAL)
 fabric_rc
-.env
+bastion_key
+slice_key
+slice_key.pub
+tokens.json
+id_token.json
+.tokens.json
 
-# Terraform
-.terraform/
-*.tfstate
-*.tfstate.backup
+# Generated Artifacts
+artifacts/
+*.png
 
-# Debug and Test Scripts
-debug_*.txt
-debug_*.py
-test_*.py
-inspect_node.py
-show_secrets.py
-
-# IDE
+# IDEs
 .vscode/
 .idea/
+
+# Logs
+debug_output.txt
+debug_log.txt

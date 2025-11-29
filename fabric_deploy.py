@@ -156,10 +156,42 @@ def deploy():
         for node in [generator, detector]:
             node.execute('sudo apt-get update && sudo apt-get install -y iperf3 python3-pip', quiet=False)
 
-        # Install GPU Drivers on Generator (This can take time, usually pre-installed on some images but good to check)
-        # For now, we just check if the card is visible. Installing full CUDA drivers takes ~10 mins, 
-        # so we'll skip the full install in this quick script and just verify the hardware exists.
-        
+        # Install GPU Drivers on Generator
+        print("\nInstalling NVIDIA Drivers on Generator (this takes ~5-10 mins)...")
+        try:
+            # Check if drivers are already loaded
+            generator.execute('nvidia-smi')
+            print("Drivers already installed.")
+        except:
+            print("Drivers not found. Installing...")
+            # Add NVIDIA repo and install
+            commands = [
+                'sudo apt-get update',
+                'sudo apt-get install -y ubuntu-drivers-common',
+                'sudo ubuntu-drivers autoinstall',
+                'sudo apt-get install -y tcpreplay tcpdump git'
+            ]
+            for cmd in commands:
+                generator.execute(cmd)
+            
+            # Reboot to load drivers
+            print("Rebooting generator node to load drivers...")
+            try:
+                generator.execute('sudo reboot', quiet=True)
+            except:
+                pass # Expected disconnection
+            
+            print("Waiting for node to come back online...")
+            time.sleep(60) # Give it a minute to shut down
+            slice.wait_ssh() # Wait for SSH to be available again
+            
+            # Verify drivers
+            print("Verifying drivers after reboot...")
+            generator.execute('nvidia-smi')
+
+        # Install PyTorch
+        print("\nInstalling PyTorch (with CUDA support)...")
+        generator.execute('pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118')
         print("\nDeployment Successful!")
         print("To access nodes:")
         print(f"  ssh -i <slice_key> ubuntu@{generator.get_management_ip()}")
@@ -194,6 +226,43 @@ def deploy():
             print(f"GPU check failed (Drivers might need install): {e}")
 
         print("\nVerification Complete!")
+
+        # ---------------------------------------------------------
+        # 7. Generate Research Artifacts (Remote Execution)
+        # ---------------------------------------------------------
+        print("\nGenerating Research Artifacts on Generator Node...")
+        try:
+            # 1. Install Dependencies
+            print("Installing Data Science stack (pandas, scipy, matplotlib)...")
+            generator.execute('pip3 install pandas scipy matplotlib', quiet=False)
+            
+            # 2. Upload Script
+            print("Uploading generation script...")
+            generator.upload_file('generate_artifacts.py', 'generate_artifacts.py')
+            
+            # 3. Run Script
+            print("Executing remote script...")
+            generator.execute('python3 generate_artifacts.py', quiet=False)
+            
+            # 4. Download Artifacts
+            print("Downloading artifacts to local runner...")
+            # Create local directory if not exists
+            if not os.path.exists('artifacts'):
+                os.makedirs('artifacts')
+            
+            # List of expected files
+            files = ['fidelity_cdf.png', 'utility_table.png', 'efficiency_throughput.png']
+            for f in files:
+                remote_path = f'artifacts/{f}'
+                local_path = f'artifacts/{f}'
+                try:
+                    generator.download_file(local_path, remote_path)
+                    print(f"  Downloaded {f}")
+                except Exception as e:
+                    print(f"  Failed to download {f}: {e}")
+                    
+        except Exception as e:
+            print(f"Artifact generation failed: {e}")
 
     except Exception as e:
         print(f"Deployment failed: {e}")
