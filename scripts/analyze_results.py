@@ -116,4 +116,4 @@ if not app_df.empty:
 else:
     print("[!] Skipping App QoE plot — no data found")
 
-print("✅ Plots generated (where data existed)")
+print("Plots generated")

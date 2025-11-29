@@ -1,18 +1,25 @@
 # Python
 __pycache__/
 *.pyc
+venv/
+
+# Environment and Secrets
+.fabric/
+fabric_rc
+.env
 
 # Terraform
 .terraform/
-.terraform.lock.hcl
-terraform.tfstate
-terraform.tfstate.backup
-crash.log
+*.tfstate
+*.tfstate.backup
 
-# OS
-.DS_Store
-Thumbs.db
+# Debug and Test Scripts
+debug_*.txt
+debug_*.py
+test_*.py
+inspect_node.py
+show_secrets.py
 
-# Results
-results/
-fig_*.png
+# IDE
+.vscode/
+.idea/

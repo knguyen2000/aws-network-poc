@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# run_experiments.sh  (client-side; invoked via SSM)
 set -euo pipefail
 
 if [[ $# -lt 1 ]]; then
@@ -137,9 +136,8 @@ run_bundle E9  T1 cubic 1500 none   none "HTTP big.bin"
 run_bundle E10 T1 cubic 1500 d50    none "HTTP with 50ms delay"
 run_bundle E11 T1 cubic 1500 l1p    none "HLS-like under 1% loss"
 
-echo "✅ Done. CSV at: $CSV"
+echo "Done. CSV at: $CSV"
 
-# Optional upload to S3 if RESULT_S3_URI is provided
 if [[ -n "${RESULT_S3_URI:-}" ]]; then
   TS=$(date +%Y%m%d-%H%M%S)
   /usr/bin/aws s3 cp "$CSV" "${RESULT_S3_URI%/}/net-experiments-$TS.csv"
