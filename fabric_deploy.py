@@ -34,6 +34,14 @@ def deploy():
         site = 'NCSA'
         print(f"Selected site: {site}")
 
+        # Check if slice exists and delete it to avoid "Slice already exists" error
+        try:
+            existing_slice = fablib.get_slice(name=SLICE_NAME)
+            print(f"Slice '{SLICE_NAME}' already exists. Deleting it...")
+            existing_slice.delete()
+        except:
+            pass # Slice does not exist
+
         print(f"Creating slice '{SLICE_NAME}'...")
         slice = fablib.new_slice(name=SLICE_NAME)
 
