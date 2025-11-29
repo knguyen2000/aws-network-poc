@@ -1,6 +1,7 @@
 import os
 import configparser
 import sys
+import ipaddress
 
 # Fix for Windows: fablib expects HOME to be set
 if os.name == 'nt' and 'HOME' not in os.environ:
@@ -94,13 +95,18 @@ def deploy():
         slice = fablib.get_slice(name=SLICE_NAME)
         server = slice.get_node('server')
         client = slice.get_node('client')
+        
+        # Network config
+        subnet = ipaddress.IPv4Network("192.168.1.0/24")
+        server_ip = ipaddress.IPv4Address("192.168.1.10")
+        client_ip = ipaddress.IPv4Address("192.168.1.11")
 
         server_iface = server.get_interface(network_name='net_a')
-        server_iface.ip_addr_add(addr='192.168.1.10', subnet='255.255.255.0')
+        server_iface.ip_addr_add(addr=server_ip, subnet=subnet)
         server_iface.ip_link_up()
 
         client_iface = client.get_interface(network_name='net_a')
-        client_iface.ip_addr_add(addr='192.168.1.11', subnet='255.255.255.0')
+        client_iface.ip_addr_add(addr=client_ip, subnet=subnet)
         client_iface.ip_link_up()
 
         # ---------------------------------------------------------
