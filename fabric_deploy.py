@@ -39,6 +39,17 @@ def deploy():
             existing_slice = fablib.get_slice(name=SLICE_NAME)
             print(f"Slice '{SLICE_NAME}' already exists. Deleting it...")
             existing_slice.delete()
+            
+            # Wait for deletion to complete
+            import time
+            for i in range(10):
+                try:
+                    fablib.get_slice(name=SLICE_NAME)
+                    print(f"Waiting for slice deletion... ({i+1}/10)")
+                    time.sleep(10)
+                except:
+                    print("Slice deleted successfully.")
+                    break
         except:
             pass # Slice does not exist
 
