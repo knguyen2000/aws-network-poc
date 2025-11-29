@@ -1,5 +1,6 @@
 import os
 import configparser
+import sys
 
 # Fix for Windows: fablib expects HOME to be set
 if os.name == 'nt' and 'HOME' not in os.environ:
@@ -105,6 +106,7 @@ def deploy():
         print(f"Deployment failed: {e}")
         import traceback
         traceback.print_exc()
+        sys.exit(1)
 
 if __name__ == "__main__":
     deploy()

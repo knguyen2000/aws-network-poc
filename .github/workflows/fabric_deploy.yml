@@ -31,8 +31,12 @@ jobs:
           pip install fabrictestbed-extensions
 
       - name: Setup Keys and Tokens
+        env:
+          FABRIC_TOKEN_JSON: ${{ secrets.FABRIC_TOKEN_JSON }}
         run: |
-          echo "${{ secrets.FABRIC_TOKEN_JSON }}" > $FABRIC_TOKEN_LOCATION
+          # Write JSON token using python to avoid shell quoting issues
+          python -c "import os; open(os.environ['FABRIC_TOKEN_LOCATION'], 'w').write(os.environ['FABRIC_TOKEN_JSON'])"
+
           echo "${{ secrets.FABRIC_BASTION_KEY }}" > $FABRIC_BASTION_KEY_LOCATION
           echo "${{ secrets.FABRIC_SLICE_KEY }}" > $FABRIC_SLICE_PRIVATE_KEY_FILE
           echo "${{ secrets.FABRIC_SLICE_PUB_KEY }}" > $FABRIC_SLICE_PUBLIC_KEY_FILE
