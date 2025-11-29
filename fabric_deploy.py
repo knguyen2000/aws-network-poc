@@ -61,7 +61,7 @@ def deploy():
         # Node A: The AI Generator (Needs GPU)
         print("Adding GPU Node (Generator)...")
         generator = slice.add_node(name='generator', site=site, image=image)
-        generator.set_capacities(cores=4, ram=16) # More RAM for AI
+        generator.set_capacities(cores=2, ram=16) # More RAM for AI
         generator.add_component(model='GPU_TeslaT4', name='gpu1')
         
         # Node B: The Detector (Standard CPU)
