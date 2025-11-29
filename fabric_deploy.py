@@ -128,6 +128,32 @@ def deploy():
         print("  From client: ping 192.168.1.10")
         print("  From client: iperf3 -c 192.168.1.10")
 
+        # ---------------------------------------------------------
+        # 6. Automated Verification
+        # ---------------------------------------------------------
+        print("\nRunning Automated Verification...")
+        
+        # Ping Test
+        print("1. Ping Test (Client -> Server)")
+        try:
+            stdout, stderr = client.execute('ping -c 4 192.168.1.10')
+            print(stdout)
+        except Exception as e:
+            print(f"Ping failed: {e}")
+
+        # iperf3 Test
+        print("2. iperf3 Test (Client -> Server)")
+        try:
+            # Start server in daemon mode
+            server.execute('iperf3 -s -D')
+            # Run client
+            stdout, stderr = client.execute('iperf3 -c 192.168.1.10')
+            print(stdout)
+        except Exception as e:
+            print(f"iperf3 failed: {e}")
+
+        print("\nVerification Complete!")
+
     except Exception as e:
         print(f"Deployment failed: {e}")
         import traceback
