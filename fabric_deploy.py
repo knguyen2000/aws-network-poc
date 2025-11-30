@@ -121,29 +121,26 @@ def deploy():
             sys.exit(1)
 
         # ---------------------------------------------------------
-        # 2. Add Network (L2 Bridge)
-        # ---------------------------------------------------------
-        # We need interfaces on both nodes to connect them
-        gen_iface = generator.add_component(model='NIC_Basic', name='nic1').get_interfaces()[0]
-        det_iface = detector.add_component(model='NIC_Basic', name='nic1').get_interfaces()[0]
-
-        # Create the L2 network connecting them
-        slice.add_l2network(name='net_a', interfaces=[gen_iface, det_iface])
-
-        # ---------------------------------------------------------
-        # 3. Submit Slice
-        # ---------------------------------------------------------
-        print("Submitting slice... this may take a few minutes.")
-        slice.submit()
-        print("Slice active!")
-
-        # ---------------------------------------------------------
         # 4. Configure Network (IPs)
         # ---------------------------------------------------------
-        # Reload slice to get latest state
+        # Reload slice to get latest state and ensure node objects are valid
+        print("Reloading slice to get active node handles...")
         slice = fablib.get_slice(name=SLICE_NAME)
         generator = slice.get_node('generator')
         detector = slice.get_node('detector')
+        
+        # Network config
+        subnet = ipaddress.IPv4Network("192.168.1.0/24")
+        gen_ip = ipaddress.IPv4Address("192.168.1.10")
+        det_ip = ipaddress.IPv4Address("192.168.1.11")
+
+        gen_iface = generator.get_interface(network_name='net_a')
+        gen_iface.ip_addr_add(addr=gen_ip, subnet=subnet)
+        gen_iface.ip_link_up()
+
+        det_iface = detector.get_interface(network_name='net_a')
+        det_iface.ip_addr_add(addr=det_ip, subnet=subnet)
+        det_iface.ip_link_up()
         
         # Network config
         subnet = ipaddress.IPv4Network("192.168.1.0/24")
