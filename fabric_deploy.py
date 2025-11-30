@@ -236,15 +236,20 @@ def deploy():
             print("Installing Data Science stack (pandas, scipy, matplotlib)...")
             generator.execute('pip3 install pandas scipy matplotlib', quiet=False)
             
-            # 2. Upload Script
-            print("Uploading generation script...")
+            # 2. Upload Scripts
+            print("Uploading scripts (GAN & Artifact Gen)...")
+            generator.upload_file('simple_gan.py', 'simple_gan.py')
             generator.upload_file('generate_artifacts.py', 'generate_artifacts.py')
             
-            # 3. Run Script
-            print("Executing remote script...")
+            # 3. Train GAN
+            print("Training GAN Model...")
+            generator.execute('python3 simple_gan.py', quiet=False)
+            
+            # 4. Generate Artifacts (using the data from simple_gan.py)
+            print("Generating plots from GAN output...")
             generator.execute('python3 generate_artifacts.py', quiet=False)
             
-            # 4. Download Artifacts
+            # 5. Download Artifacts
             print("Downloading artifacts to local runner...")
             # Create local directory if not exists
             if not os.path.exists('artifacts'):

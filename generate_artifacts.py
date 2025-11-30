@@ -13,32 +13,38 @@ if not os.path.exists(OUTPUT_DIR):
 
 def generate_fidelity_plot():
     print("Generating Fidelity Plot (CDF)...")
-    # Simulate Inter-arrival Times (IAT)
-    # Real traffic: Exponential distribution (Poisson process)
-    real_iat = np.random.exponential(scale=1.0, size=1000)
-    # Synthetic traffic: Slightly noisy Exponential distribution (GAN output)
-    syn_iat = np.random.exponential(scale=1.05, size=1000) + np.random.normal(0, 0.05, 1000)
-    syn_iat = np.abs(syn_iat) # IAT must be positive
-
-    # Calculate KS-Test
-    statistic, p_value = ks_2samp(real_iat, syn_iat)
-    print(f"  KS-Test Statistic: {statistic:.4f}")
-    print(f"  P-Value: {p_value:.4f} (If > 0.05, distributions are statistically similar)")
-
-    # Plot CDF
-    plt.figure(figsize=(8, 6))
-    plt.hist(real_iat, bins=50, density=True, histtype='step', cumulative=True, label='Real Traffic', linewidth=2)
-    plt.hist(syn_iat, bins=50, density=True, histtype='step', cumulative=True, label='Synthetic (GAN)', linewidth=2, linestyle='--')
-    plt.title('Fidelity: CDF of Packet Inter-arrival Times')
-    plt.xlabel('Inter-arrival Time (ms)')
-    plt.ylabel('Cumulative Probability')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
     
-    filename = os.path.join(OUTPUT_DIR, 'fidelity_cdf.png')
-    plt.savefig(filename)
-    print(f"  Saved to {filename}")
-    plt.close()
+    try:
+        # Load Data
+        df_real = pd.read_csv('real_traffic.csv')
+        df_syn = pd.read_csv('synthetic_traffic.csv')
+        
+        real_iat = df_real['iat'].values
+        syn_iat = df_syn['iat'].values
+        
+        # Calculate KS-Test
+        statistic, p_value = ks_2samp(real_iat, syn_iat)
+        print(f"  KS-Test Statistic: {statistic:.4f}")
+        print(f"  P-Value: {p_value:.4f}")
+
+        # Plot CDF
+        plt.figure(figsize=(8, 6))
+        plt.hist(real_iat, bins=50, density=True, histtype='step', cumulative=True, label='Real Traffic', linewidth=2)
+        plt.hist(syn_iat, bins=50, density=True, histtype='step', cumulative=True, label='Synthetic (GAN)', linewidth=2, linestyle='--')
+        plt.title('Fidelity: CDF of Packet Inter-arrival Times')
+        plt.xlabel('Inter-arrival Time (ms)')
+        plt.ylabel('Cumulative Probability')
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+        
+        filename = os.path.join(OUTPUT_DIR, 'fidelity_cdf.png')
+        plt.savefig(filename)
+        print(f"  Saved to {filename}")
+        plt.close()
+        
+    except FileNotFoundError:
+        print("Error: Data files (real_traffic.csv, synthetic_traffic.csv) not found!")
+        print("       Ensure simple_gan.py has been run first.")
 
 def generate_utility_table():
     print("\nGenerating Utility Table...")
