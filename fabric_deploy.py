@@ -165,10 +165,11 @@ def deploy():
             print("Verifying drivers...")
             generator.execute('nvidia-smi')
 
-        # Install PyTorch (Minimal)
-        print("\nInstalling PyTorch (Minimal)...")
-        # Use --no-cache-dir and install only torch to save space
-        generator.execute('python3 -m pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cu118', quiet=False)
+        # Install PyTorch (Standard)
+        print("\nInstalling PyTorch (Standard with CUDA)...")
+        # Reverting to standard install but keeping --no-cache-dir
+        # The minimal install caused missing shared libraries
+        generator.execute('python3 -m pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118', quiet=False)
         
         print("Verifying PyTorch...")
         try:
