@@ -159,24 +159,6 @@ def deploy():
         try:
             print("Installing Data Science stack...")
             generator.execute('python3 -m pip install --no-cache-dir pandas scipy matplotlib scikit-learn', quiet=False)
-            
-            print("Uploading scripts...")
-            generator.upload_file('simple_gan.py', 'simple_gan.py')
-            generator.upload_file('generate_artifacts.py', 'generate_artifacts.py')
-            
-            print("Training GAN...")
-            generator.execute('python3 simple_gan.py', quiet=False)
-            
-            print("Generating plots...")
-            generator.execute('python3 generate_artifacts.py', quiet=False)
-            
-            print("Downloading artifacts...")
-            if not os.path.exists('artifacts'):
-                os.makedirs('artifacts')
-            
-            files = ['fidelity_cdf.png', 'utility_table.png', 'efficiency_throughput.png']
-            for f in files:
-                remote_path = f'artifacts/{f}'
                 local_path = f'artifacts/{f}'
                 try:
                     stdout, stderr = generator.execute(f'ls -l {remote_path} | awk "{{print \$5}}"', quiet=True)
