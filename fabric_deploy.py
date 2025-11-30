@@ -89,8 +89,9 @@ def deploy():
                 # Node A: Generator (GPU)
                 print("Adding GPU Node...")
                 generator = slice.add_node(name='generator', site=site, image=image)
-                generator.set_capacities(cores=2, ram=8, disk=50) # Increase disk to 50GB for AI stack
+                generator.set_capacities(cores=2, ram=8) # Revert disk to default (policy limit)
                 generator.add_component(model='GPU_TeslaT4', name='gpu1')
+                generator.add_component(model='NVME_Basic', name='storage1') # Add NVMe for storage
                 
                 # Node B: Detector (CPU)
                 print("Adding CPU Node...")
@@ -242,40 +243,6 @@ def deploy():
             print("NVIDIA-SMI Output:")
             print(stdout)
         except Exception as e:
-            print(f"GPU check failed (Drivers might need install): {e}")
-
-        print("\nVerification Complete!")
-
-        # ---------------------------------------------------------
-        # 7. Generate Research Artifacts (Remote Execution)
-        # ---------------------------------------------------------
-        print("\nGenerating Research Artifacts on Generator Node...")
-        try:
-            # 1. Install Dependencies
-            print("Installing Data Science stack (pandas, scipy, matplotlib, scikit-learn)...")
-            generator.execute('python3 -m pip install pandas scipy matplotlib scikit-learn', quiet=False)
-            
-            # 2. Upload Scripts
-            print("Uploading scripts (GAN & Artifact Gen)...")
-            generator.upload_file('simple_gan.py', 'simple_gan.py')
-            generator.upload_file('generate_artifacts.py', 'generate_artifacts.py')
-            
-            # 3. Train GAN
-            print("Training GAN Model...")
-            generator.execute('python3 simple_gan.py', quiet=False)
-            
-            # 4. Generate Artifacts (using the data from simple_gan.py)
-            print("Generating plots from GAN output...")
-            generator.execute('python3 generate_artifacts.py', quiet=False)
-            
-            # 5. Download Artifacts
-            print("Downloading artifacts to local runner...")
-            # Create local directory if not exists
-            if not os.path.exists('artifacts'):
-                os.makedirs('artifacts')
-            
-            # List of expected files
-            files = ['fidelity_cdf.png', 'utility_table.png', 'efficiency_throughput.png']
             for f in files:
                 remote_path = f'artifacts/{f}'
                 local_path = f'artifacts/{f}'
