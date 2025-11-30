@@ -52,8 +52,8 @@ def deploy():
         # 3. Fallback: Known sites even if query failed (maybe data was stale)
         candidates.extend([s for s in known_big_sites if s not in candidates])
         
-        # Remove duplicates just in case
-        candidates = list(dict.fromkeys(candidates))
+        # Remove duplicates and None
+        candidates = list(dict.fromkeys([c for c in candidates if c]))
         
         print(f"Candidate Sites (in order): {candidates}")
 
@@ -116,8 +116,8 @@ def deploy():
                 except:
                     pass
         
-        if not slice or slice.get_state() != 'Stable':
-            print("\nCRITICAL: All deployment attempts failed.")
+        if not slice or slice.get_state() not in ['Stable', 'StableOK']:
+            print(f"\nCRITICAL: All deployment attempts failed. Final State: {slice.get_state() if slice else 'None'}")
             sys.exit(1)
 
         # ---------------------------------------------------------
