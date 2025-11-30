@@ -26,86 +26,99 @@ def deploy():
         
         # Configuration
         SLICE_NAME = 'ai-traffic-synth'
-        # We need a site with Tesla T4 GPUs.
-        # Strategy: Query ALL sites, sort by T4 availability, pick the one with the most.
-        print("Finding the site with the MOST available Tesla T4 GPUs...")
+        
+        # ---------------------------------------------------------
+        # Site Selection Strategy (Robust Retry)
+        # ---------------------------------------------------------
+        print("Finding sites with Tesla T4 GPUs...")
         try:
             # Get all sites that have at least 1 T4
-            # We ask for a large count (50) to ensure we get all of them
             gpu_sites = fablib.get_random_sites(count=50, filter_function=lambda s: s.get('Tesla T4 Available', 0) > 0)
-            
             if not gpu_sites:
                 raise Exception("No sites with Tesla T4 GPUs found!")
-                
-            # Sort by availability (descending)
-            # We need to re-fetch the details or rely on the dictionary we have
-            # The list returned by get_random_sites is a list of site names (strings) or dicts?
-            # get_random_sites returns a list of site names (strings).
-            # Wait, the filter function received a dict. 
-            # Let's verify what get_random_sites returns. 
-            # Documentation says: returns a list of site names.
-            
-            # If it returns names, we can't sort by availability easily without re-querying.
-            # But we can use the 'resources' object if we had it.
-            
-            # Alternative: Use a hardcoded list of reliable sites if dynamic fails.
-            # But let's try to be smart.
-            
-            # Let's just try the sites in the returned list, but prioritize known big ones.
-            known_big_sites = ['NCSA', 'TACC', 'CLEMSON', 'UTAH', 'MICH', 'WASH', 'DALL', 'UCSD', 'LBNL']
-            
-            site = None
-            # Intersection of found sites and known big sites
-            candidates = [s for s in known_big_sites if s in gpu_sites]
-            
-            if candidates:
-                site = candidates[0] # Pick the first known big site that has availability
-            else:
-                site = gpu_sites[0] # Fallback to whatever was found
-                
         except Exception as e:
-            print(f"Error finding site: {e}. Defaulting to TACC (usually has capacity).")
-            site = 'TACC'
+            print(f"Error querying sites: {e}. Defaulting to known list.")
+            gpu_sites = []
 
-        print(f"Selected site: {site}")
+        # Prioritize known big sites, then append the rest
+        known_big_sites = ['NCSA', 'TACC', 'CLEMSON', 'UTAH', 'MICH', 'WASH', 'DALL', 'UCSD', 'LBNL']
+        
+        # Create a prioritized list of candidates
+        candidates = []
+        # 1. Known sites that reported having GPUs
+        candidates.extend([s for s in known_big_sites if s in gpu_sites])
+        # 2. Other sites that reported having GPUs
+        candidates.extend([s for s in gpu_sites if s not in known_big_sites])
+        # 3. Fallback: Known sites even if query failed (maybe data was stale)
+        candidates.extend([s for s in known_big_sites if s not in candidates])
+        
+        # Remove duplicates just in case
+        candidates = list(dict.fromkeys(candidates))
+        
+        print(f"Candidate Sites (in order): {candidates}")
 
-        # Check if slice exists and delete it to avoid "Slice already exists" error
-        try:
-            existing_slice = fablib.get_slice(name=SLICE_NAME)
-            print(f"Slice '{SLICE_NAME}' already exists. Deleting it...")
-            existing_slice.delete()
-            
-            # Wait for deletion to complete
-            import time
-            for i in range(10):
+        # ---------------------------------------------------------
+        # Deployment Loop
+        # ---------------------------------------------------------
+        slice = None
+        for site in candidates:
+            print(f"\n--- Attempting deployment at {site} ---")
+            try:
+                # Cleanup existing slice if needed
                 try:
-                    fablib.get_slice(name=SLICE_NAME)
-                    print(f"Waiting for slice deletion... ({i+1}/10)")
-                    time.sleep(10)
+                    existing = fablib.get_slice(name=SLICE_NAME)
+                    print(f"Deleting existing slice '{SLICE_NAME}'...")
+                    existing.delete()
+                    # Wait for deletion
+                    import time
+                    for i in range(10):
+                        try:
+                            fablib.get_slice(name=SLICE_NAME)
+                            time.sleep(5)
+                        except:
+                            break
                 except:
-                    print("Slice deleted successfully.")
-                    break
-        except:
-            pass # Slice does not exist
+                    pass
 
-        print(f"Creating slice '{SLICE_NAME}'...")
-        slice = fablib.new_slice(name=SLICE_NAME)
+                print(f"Creating slice '{SLICE_NAME}' at {site}...")
+                slice = fablib.new_slice(name=SLICE_NAME)
 
-        # ---------------------------------------------------------
-        # 1. Add Nodes (Generator/AI & Detector)
-        # ---------------------------------------------------------
-        image = 'default_ubuntu_22'
+                # 1. Add Nodes
+                image = 'default_ubuntu_22'
+                
+                # Node A: Generator (GPU)
+                print("Adding GPU Node...")
+                generator = slice.add_node(name='generator', site=site, image=image)
+                generator.set_capacities(cores=2, ram=8)
+                generator.add_component(model='GPU_TeslaT4', name='gpu1')
+                
+                # Node B: Detector (CPU)
+                print("Adding CPU Node...")
+                detector = slice.add_node(name='detector', site=site, image=image)
+                detector.set_capacities(cores=2, ram=8)
+
+                # 2. Add Network
+                gen_iface = generator.add_component(model='NIC_Basic', name='nic1').get_interfaces()[0]
+                det_iface = detector.add_component(model='NIC_Basic', name='nic1').get_interfaces()[0]
+                slice.add_l2network(name='net_a', interfaces=[gen_iface, det_iface])
+
+                # 3. Submit
+                print("Submitting slice...")
+                slice.submit()
+                print(f"SUCCESS! Slice active at {site}.")
+                break # Exit loop on success
+
+            except Exception as e:
+                print(f"FAILED at {site}: {e}")
+                print("Cleaning up and trying next site...")
+                try:
+                    if slice: slice.delete()
+                except:
+                    pass
         
-        # Node A: The AI Generator (Needs GPU)
-        print("Adding GPU Node (Generator)...")
-        generator = slice.add_node(name='generator', site=site, image=image)
-        generator.set_capacities(cores=2, ram=8) # Max 8GB allowed by policy
-        generator.add_component(model='GPU_TeslaT4', name='gpu1')
-        
-        # Node B: The Detector (Standard CPU)
-        print("Adding CPU Node (Detector)...")
-        detector = slice.add_node(name='detector', site=site, image=image)
-        detector.set_capacities(cores=2, ram=8)
+        if not slice or slice.get_state() != 'Stable':
+            print("\nCRITICAL: All deployment attempts failed.")
+            sys.exit(1)
 
         # ---------------------------------------------------------
         # 2. Add Network (L2 Bridge)
