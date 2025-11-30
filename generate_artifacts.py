@@ -130,7 +130,25 @@ def generate_efficiency_chart():
 
 if __name__ == "__main__":
     print("Generating Research Artifacts...")
-    generate_fidelity_plot()
-    generate_utility_table()
-    generate_efficiency_chart()
+    try:
+        generate_fidelity_plot()
+    except Exception as e:
+        print(f"FAILED to generate Fidelity Plot: {e}")
+        import traceback
+        traceback.print_exc()
+
+    try:
+        generate_utility_table()
+    except Exception as e:
+        print(f"FAILED to generate Utility Table: {e}")
+        import traceback
+        traceback.print_exc()
+
+    try:
+        generate_efficiency_chart()
+    except Exception as e:
+        print(f"FAILED to generate Efficiency Chart: {e}")
+        import traceback
+        traceback.print_exc()
+
     print("\nDone! Check the 'artifacts' directory.")

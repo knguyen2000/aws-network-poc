@@ -201,7 +201,16 @@ def deploy():
 
         # Install PyTorch
         print("\nInstalling PyTorch (with CUDA support)...")
-        generator.execute('pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118')
+        # Use python3 -m pip to ensure we install for the running python interpreter
+        generator.execute('python3 -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118', quiet=False)
+        
+        # Verify PyTorch installation immediately
+        print("Verifying PyTorch installation...")
+        try:
+            generator.execute('python3 -c "import torch; print(f\'Torch version: {torch.__version__}, CUDA: {torch.cuda.is_available()}\')"', quiet=False)
+        except Exception as e:
+            print(f"WARNING: PyTorch verification failed: {e}")
+
         print("\nDeployment Successful!")
         print("To access nodes:")
         print(f"  ssh -i <slice_key> ubuntu@{generator.get_management_ip()}")
@@ -244,7 +253,7 @@ def deploy():
         try:
             # 1. Install Dependencies
             print("Installing Data Science stack (pandas, scipy, matplotlib, scikit-learn)...")
-            generator.execute('pip3 install pandas scipy matplotlib scikit-learn', quiet=False)
+            generator.execute('python3 -m pip install pandas scipy matplotlib scikit-learn', quiet=False)
             
             # 2. Upload Scripts
             print("Uploading scripts (GAN & Artifact Gen)...")
@@ -271,8 +280,15 @@ def deploy():
                 remote_path = f'artifacts/{f}'
                 local_path = f'artifacts/{f}'
                 try:
-                    generator.download_file(local_path, remote_path)
-                    print(f"  Downloaded {f}")
+                    # Verify file exists and has size > 0
+                    stdout, stderr = generator.execute(f'ls -l {remote_path} | awk "{{print \$5}}"', quiet=True)
+                    size = int(stdout.strip()) if stdout.strip().isdigit() else 0
+                    
+                    if size > 0:
+                        generator.download_file(local_path, remote_path)
+                        print(f"  Downloaded {f} ({size} bytes)")
+                    else:
+                        print(f"  Skipping {f}: File is empty or does not exist remotely.")
                 except Exception as e:
                     print(f"  Failed to download {f}: {e}")
                     
