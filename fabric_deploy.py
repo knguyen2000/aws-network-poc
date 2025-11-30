@@ -243,8 +243,8 @@ def deploy():
         print("\nGenerating Research Artifacts on Generator Node...")
         try:
             # 1. Install Dependencies
-            print("Installing Data Science stack (pandas, scipy, matplotlib)...")
-            generator.execute('pip3 install pandas scipy matplotlib', quiet=False)
+            print("Installing Data Science stack (pandas, scipy, matplotlib, scikit-learn)...")
+            generator.execute('pip3 install pandas scipy matplotlib scikit-learn', quiet=False)
             
             # 2. Upload Scripts
             print("Uploading scripts (GAN & Artifact Gen)...")
