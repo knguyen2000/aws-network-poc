@@ -121,6 +121,115 @@ def deploy():
         gen_iface.ip_link_up()
 
         det_iface = detector.get_interface(network_name='net_a')
+        det_iface.ip_addr_add(addr=det_ip, subnet=subnet)
+        det_iface.ip_link_up()
+
+        # ---------------------------------------------------------
+        # 5. Install Software
+        # ---------------------------------------------------------
+        print("Installing software...")
+        slice.wait_ssh()
+        
+        for node in [generator, detector]:
+            # Clean apt cache to save space
+            node.execute('sudo apt-get clean', quiet=True)
+            node.execute('sudo apt-get update', quiet=False)
+            node.execute('sudo apt-get install -y iperf3', quiet=False)
+            
+            # Install pip (Robust method)
+            print(f"Installing pip on {node.get_name()}...")
+            node.execute('sudo apt-get install -y python3-pip', quiet=False)
+            
+            # Verify pip and fallback to get-pip.py if needed
+            try:
+                node.execute('python3 -m pip --version', quiet=False)
+            except:
+                print("Pip not found via apt. Installing via get-pip.py...")
+                node.execute('curl -sS https://bootstrap.pypa.io/get-pip.py | sudo python3', quiet=False)
+
+        # Install GPU Drivers
+        # SKIP DRIVERS to save disk space (10GB limit). We will use CPU-only PyTorch.
+        print("\nSkipping NVIDIA Driver installation to save disk space...")
+
+        # Install PyTorch (CPU Only)
+        print("\nInstalling PyTorch (CPU Only)...")
+        # CPU version is much smaller and fits in the 10GB disk
+        generator.execute('python3 -m pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu', quiet=False)
+        
+        print("Verifying PyTorch...")
+        try:
+            generator.execute('python3 -c "import torch; print(f\'Torch version: {torch.__version__}, CUDA: {torch.cuda.is_available()}\')"', quiet=False)
+        except Exception as e:
+            print(f"WARNING: PyTorch verification failed: {e}")
+
+        print("\nDeployment Successful!")
+        print(f"  ssh -i <slice_key> ubuntu@{generator.get_management_ip()}")
+        print(f"  ssh -i <slice_key> ubuntu@{detector.get_management_ip()}")
+
+        # ---------------------------------------------------------
+        # 6. Verification
+        # ---------------------------------------------------------
+        print("\nRunning Automated Verification...")
+        print("1. Ping Test")
+        try:
+            stdout, stderr = generator.execute('ping -c 4 192.168.1.11')
+            print(stdout)
+        except Exception as e:
+            print(f"Ping failed: {e}")
+
+        print("2. GPU Verification")
+        try:
+            stdout, stderr = generator.execute('nvidia-smi')
+            print(stdout)
+        except Exception as e:
+            print(f"GPU check failed (Expected if drivers skipped): {e}")
+
+        # ---------------------------------------------------------
+        # 7. Artifacts
+        # ---------------------------------------------------------
+        print("\nGenerating Research Artifacts...")
+        try:
+            print("Installing Data Science stack...")
+            generator.execute('python3 -m pip install --no-cache-dir pandas scipy matplotlib scikit-learn', quiet=False)
+            
+            print("Uploading scripts...")
+            generator.upload_file('simple_gan.py', 'simple_gan.py')
+            generator.upload_file('generate_artifacts.py', 'generate_artifacts.py')
+            
+            print("Training GAN...")
+            generator.execute('python3 simple_gan.py', quiet=False)
+            
+            print("Generating plots...")
+            generator.execute('python3 generate_artifacts.py', quiet=False)
+            
+            print("Downloading artifacts...")
+            if not os.path.exists('artifacts'):
+                os.makedirs('artifacts')
+            
+            files = ['fidelity_cdf.png', 'utility_table.png', 'efficiency_throughput.png']
+            for f in files:
+                remote_path = f'artifacts/{f}'
+                local_path = f'artifacts/{f}'
+                try:
+                    stdout, stderr = generator.execute(f'ls -l {remote_path} | awk "{{print \$5}}"', quiet=True)
+                    size = int(stdout.strip()) if stdout.strip().isdigit() else 0
+                    
+                    if size > 0:
+                        generator.download_file(local_path, remote_path)
+                        print(f"  Downloaded {f} ({size} bytes)")
+                    else:
+                        print(f"  Skipping {f}: Empty or missing.")
+                except Exception as e:
+                    print(f"  Failed to download {f}: {e}")
+                    
+        except Exception as e:
+            print(f"Artifact generation failed: {e}")
+
+    except Exception as e:
+        print(f"Deployment failed: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
 
 if __name__ == "__main__":
     deploy()
