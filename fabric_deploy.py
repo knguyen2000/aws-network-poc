@@ -89,7 +89,7 @@ def deploy():
                 # Node A: Generator (GPU)
                 print("Adding GPU Node...")
                 generator = slice.add_node(name='generator', site=site, image=image)
-                generator.set_capacities(cores=2, ram=8)
+                generator.set_capacities(cores=2, ram=8, disk=50) # Increase disk to 50GB for AI stack
                 generator.add_component(model='GPU_TeslaT4', name='gpu1')
                 
                 # Node B: Detector (CPU)
