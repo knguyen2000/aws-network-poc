@@ -129,53 +129,6 @@ def deploy():
         # ---------------------------------------------------------
         print("Installing software...")
         slice.wait_ssh()
-        
-        for node in [generator, detector]:
-            # Clean apt cache to save space
-            node.execute('sudo apt-get clean', quiet=True)
-            node.execute('sudo apt-get update && sudo apt-get install -y iperf3 python3-pip', quiet=False)
-
-        # Install GPU Drivers
-        print("\nInstalling NVIDIA Drivers on Generator...")
-        try:
-            generator.execute('nvidia-smi')
-            print("Drivers already installed.")
-        except:
-            print("Drivers not found. Installing...")
-            commands = [
-                'sudo apt-get update',
-                'sudo apt-get install -y ubuntu-drivers-common',
-                'sudo ubuntu-drivers autoinstall',
-                'sudo apt-get install -y tcpreplay tcpdump git',
-                'sudo apt-get clean'
-            ]
-            for cmd in commands:
-                generator.execute(cmd)
-            
-            print("Rebooting generator...")
-            try:
-                generator.execute('sudo reboot', quiet=True)
-            except:
-                pass
-            
-            print("Waiting for node to come back online...")
-            time.sleep(60)
-            slice.wait_ssh()
-            
-            print("Verifying drivers...")
-            generator.execute('nvidia-smi')
-
-        # Install PyTorch (Standard)
-        print("\nInstalling PyTorch (Standard with CUDA)...")
-        # Reverting to standard install but keeping --no-cache-dir
-        # The minimal install caused missing shared libraries
-        generator.execute('python3 -m pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118', quiet=False)
-        
-        print("Verifying PyTorch...")
-        try:
-            generator.execute('python3 -c "import torch; print(f\'Torch version: {torch.__version__}, CUDA: {torch.cuda.is_available()}\')"', quiet=False)
-        except Exception as e:
-            print(f"WARNING: PyTorch verification failed: {e}")
 
         print("\nDeployment Successful!")
         print(f"  ssh -i <slice_key> ubuntu@{generator.get_management_ip()}")
