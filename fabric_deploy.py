@@ -121,65 +121,6 @@ def deploy():
         gen_iface.ip_link_up()
 
         det_iface = detector.get_interface(network_name='net_a')
-        det_iface.ip_addr_add(addr=det_ip, subnet=subnet)
-        det_iface.ip_link_up()
-
-        # ---------------------------------------------------------
-        # 5. Install Software
-        # ---------------------------------------------------------
-        print("Installing software...")
-        slice.wait_ssh()
-
-        print("\nDeployment Successful!")
-        print(f"  ssh -i <slice_key> ubuntu@{generator.get_management_ip()}")
-        print(f"  ssh -i <slice_key> ubuntu@{detector.get_management_ip()}")
-
-        # ---------------------------------------------------------
-        # 6. Verification
-        # ---------------------------------------------------------
-        print("\nRunning Automated Verification...")
-        print("1. Ping Test")
-        try:
-            stdout, stderr = generator.execute('ping -c 4 192.168.1.11')
-            print(stdout)
-        except Exception as e:
-            print(f"Ping failed: {e}")
-
-        print("2. GPU Verification")
-        try:
-            stdout, stderr = generator.execute('nvidia-smi')
-            print(stdout)
-        except Exception as e:
-            print(f"GPU check failed: {e}")
-
-        # ---------------------------------------------------------
-        # 7. Artifacts
-        # ---------------------------------------------------------
-        print("\nGenerating Research Artifacts...")
-        try:
-            print("Installing Data Science stack...")
-            generator.execute('python3 -m pip install --no-cache-dir pandas scipy matplotlib scikit-learn', quiet=False)
-                local_path = f'artifacts/{f}'
-                try:
-                    stdout, stderr = generator.execute(f'ls -l {remote_path} | awk "{{print \$5}}"', quiet=True)
-                    size = int(stdout.strip()) if stdout.strip().isdigit() else 0
-                    
-                    if size > 0:
-                        generator.download_file(local_path, remote_path)
-                        print(f"  Downloaded {f} ({size} bytes)")
-                    else:
-                        print(f"  Skipping {f}: Empty or missing.")
-                except Exception as e:
-                    print(f"  Failed to download {f}: {e}")
-                    
-        except Exception as e:
-            print(f"Artifact generation failed: {e}")
-
-    except Exception as e:
-        print(f"Deployment failed: {e}")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
 
 if __name__ == "__main__":
     deploy()
