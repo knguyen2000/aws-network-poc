@@ -224,29 +224,29 @@ metrics = {
     }
 }
 
-    # Convert numpy types to native python types for JSON serialization
-    def convert_to_builtin_type(obj):
-        if isinstance(obj, np.integer):
-            return int(obj)
-        elif isinstance(obj, np.floating):
-            return float(obj)
-        elif isinstance(obj, np.ndarray):
-            return obj.tolist()
-        else:
-            return obj
+# Convert numpy types to native python types for JSON serialization
+def convert_to_builtin_type(obj):
+    if isinstance(obj, np.integer):
+        return int(obj)
+    elif isinstance(obj, np.floating):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    else:
+        return obj
 
-    # Recursively apply conversion to the metrics dictionary
-    def recursive_convert(d):
-        if isinstance(d, dict):
-            return {k: recursive_convert(v) for k, v in d.items()}
-        elif isinstance(d, list):
-            return [recursive_convert(v) for v in d]
-        else:
-            return convert_to_builtin_type(d)
+# Recursively apply conversion to the metrics dictionary
+def recursive_convert(d):
+    if isinstance(d, dict):
+        return {k: recursive_convert(v) for k, v in d.items()}
+    elif isinstance(d, list):
+        return [recursive_convert(v) for v in d]
+    else:
+        return convert_to_builtin_type(d)
 
-    metrics = recursive_convert(metrics)
-    
-    with open(METRICS_FILE, 'w') as f:
-        json.dump(metrics, f, indent=4)
+metrics = recursive_convert(metrics)
+
+with open(METRICS_FILE, 'w') as f:
+    json.dump(metrics, f, indent=4)
 
 print(f"Saved metrics to {METRICS_FILE}")
