@@ -104,21 +104,6 @@ def deploy():
                 
                 # Server (Aggregator) - CPU Only
                 print("Adding Server Node...")
-                server = slice.add_node(name='server', site=site, image=image)
-                server.set_capacities(cores=4, ram=8)
-                
-                # Client 1 (Trainer) - GPU + NVMe
-                print("Adding Client 1...")
-                client1 = slice.add_node(name='client1', site=site, image=image)
-                client1.set_capacities(cores=4, ram=16)
-                client1.add_component(model='GPU_TeslaT4', name='gpu1')
-                client1.add_component(model='NVME_P4510', name='nvme1')
-
-                # Client 2 (Trainer) - GPU + NVMe
-                print("Adding Client 2...")
-                client2 = slice.add_node(name='client2', site=site, image=image)
-                client2.set_capacities(cores=4, ram=16)
-                client2.add_component(model='GPU_TeslaT4', name='gpu1')
                 client2.add_component(model='NVME_P4510', name='nvme1')
 
                 # 2. Add Network (L2 Bridge)
