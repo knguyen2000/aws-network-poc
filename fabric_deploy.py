@@ -112,14 +112,14 @@ def deploy():
                 client1 = slice.add_node(name='client1', site=site, image=image)
                 client1.set_capacities(cores=4, ram=16)
                 client1.add_component(model='GPU_TeslaT4', name='gpu1')
-                client1.add_component(model='NVME_Basic', name='nvme1')
+                client1.add_component(model='NVME_P4510', name='nvme1')
 
                 # Client 2 (Trainer) - GPU + NVMe
                 print("Adding Client 2...")
                 client2 = slice.add_node(name='client2', site=site, image=image)
                 client2.set_capacities(cores=4, ram=16)
                 client2.add_component(model='GPU_TeslaT4', name='gpu1')
-                client2.add_component(model='NVME_Basic', name='nvme1')
+                client2.add_component(model='NVME_P4510', name='nvme1')
 
                 # 2. Add Network (L2 Bridge)
                 iface_server = server.add_component(model='NIC_Basic', name='nic1').get_interfaces()[0]
