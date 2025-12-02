@@ -80,10 +80,10 @@ def generate_utility_table():
         table.set_fontsize(12)
         table.scale(1.2, 1.5)
         
-        plt.title('Utility: Intrusion Detection System Performance (TSTR)', y=1.1)
+        plt.title('Utility: Intrusion Detection System Performance (TSTR)', y=1.05)
         
         filename = os.path.join(OUTPUT_DIR, 'utility_table.png')
-        plt.savefig(filename)
+        plt.savefig(filename, bbox_inches='tight', pad_inches=0.2)
         print(f"  Saved to {filename}")
         plt.close()
         
@@ -121,7 +121,7 @@ def generate_efficiency_chart():
                     ha='center', va='bottom')
 
         filename = os.path.join(OUTPUT_DIR, 'efficiency_throughput.png')
-        plt.savefig(filename)
+        plt.savefig(filename, bbox_inches='tight')
         print(f"  Saved to {filename}")
         plt.close()
         

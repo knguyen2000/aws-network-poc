@@ -23,3 +23,13 @@ artifacts/
 # Logs
 debug_output.txt
 debug_log.txt
+*.log
+traceback.log
+
+# Specific Keys & Tokens
+fabric_token_local.json
+Test1BastionPrK
+Test1BastionPrK.pub
+Test1SilverPrK
+Test1SilverPrK.pub
+.fabric/

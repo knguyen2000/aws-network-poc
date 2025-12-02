@@ -4,65 +4,97 @@ import sys
 import ipaddress
 import time
 
-# Fix for Windows: fablib expects HOME to be set
-if os.name == 'nt' and 'HOME' not in os.environ:
-    os.environ['HOME'] = os.environ.get('USERPROFILE', 'c:\\')
+# Path handling
+if os.environ.get('GITHUB_ACTIONS') == 'true':
+    # GitHub Actions Environment
+    print("Detected GitHub Actions Environment")
+    fab_dir = os.path.expanduser('~/.fabric')
+    os.makedirs(fab_dir, exist_ok=True)
+    
+    os.environ['FABRIC_TOKEN_LOCATION'] = os.path.join(fab_dir, 'id_token.json')
+    os.environ['FABRIC_BASTION_KEY_LOCATION'] = os.path.join(fab_dir, 'bastion_key')
+    os.environ['FABRIC_SLICE_PRIVATE_KEY_FILE'] = os.path.join(fab_dir, 'slice_key')
+    os.environ['FABRIC_SLICE_PUBLIC_KEY_FILE'] = os.path.join(fab_dir, 'slice_key.pub')
 
-# Manually load fabric_rc into environment variables
-rc_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fabric_rc')
-if os.path.exists(rc_file):
-    config = configparser.ConfigParser()
-    config.read(rc_file)
-    if 'DEFAULT' in config:
-        for key, value in config['DEFAULT'].items():
-            os.environ[key.upper()] = value
+elif os.name == 'nt':
+    # Windows Local
+    if 'HOME' not in os.environ:
+        os.environ['HOME'] = os.environ.get('USERPROFILE', 'c:\\')
+    
+    os.environ['FABRIC_TOKEN_LOCATION'] = r'c:\Users\khuon\aws-network-poc\fabric_token_local.json'
+    os.environ['FABRIC_BASTION_KEY_LOCATION'] = r'C:\Users\khuon\.fabric\Test1BastionPrK'
+    os.environ['FABRIC_SLICE_PRIVATE_KEY_FILE'] = r'C:\Users\khuon\.fabric\slice_key'
+    os.environ['FABRIC_SLICE_PUBLIC_KEY_FILE'] = r'C:\Users\khuon\.fabric\slice_key.pub'
+else:
+    # Linux / WSL Local
+    user_root = "/mnt/c/Users/khuon"
+    os.environ['FABRIC_TOKEN_LOCATION'] = f"{user_root}/aws-network-poc/fabric_token_local.json"
+    os.environ['FABRIC_BASTION_KEY_LOCATION'] = f"{user_root}/.fabric/Test1BastionPrK"
+    os.environ['FABRIC_SLICE_PRIVATE_KEY_FILE'] = f"{user_root}/.fabric/slice_key"
+    os.environ['FABRIC_SLICE_PUBLIC_KEY_FILE'] = f"{user_root}/.fabric/slice_key.pub"
+
+# Disable Logging to avoid multiprocessing crashes
+
+# Disable Logging to avoid multiprocessing crashes
+os.environ['FABRIC_LOG_LEVEL'] = 'CRITICAL'
+os.environ['FABRIC_QUIET'] = 'True'
+
+# MONKEY PATCH: Fix for Clock Skew (iat error)
+try:
+    import jwt
+    original_decode = jwt.decode
+    def patched_decode(*args, **kwargs):
+        # Add 1 hour leeway for 'iat' check
+        kwargs['leeway'] = 3600 
+        return original_decode(*args, **kwargs)
+    jwt.decode = patched_decode
+    print("Monkey-patched jwt.decode to allow clock skew.")
+except ImportError:
+    print("Could not patch jwt (not installed?), proceeding anyway...")
 
 from fabrictestbed_extensions.fablib.fablib import FablibManager as fablib_manager
+
+import time
 
 def deploy():
     try:
         fablib = fablib_manager()
-        SLICE_NAME = 'ai-traffic-synth'
+        # Use unique name to avoid 'get_slice' crash
+        SLICE_NAME = f'ai-traffic-synth-{int(time.time())}'
+        print(f"Using Slice Name: {SLICE_NAME}")
         
         # ---------------------------------------------------------
         # Site Selection
         # ---------------------------------------------------------
-        print("Finding sites with Tesla T4 GPUs...")
-        try:
-            gpu_sites = fablib.get_random_sites(count=50, filter_function=lambda s: s.get('Tesla T4 Available', 0) > 0)
-        except Exception as e:
-            print(f"Error querying sites: {e}. Defaulting to known list.")
-            gpu_sites = []
+        print("Skipping dynamic site query (API issues detected). Using hardcoded list.")
+        gpu_sites = []
 
         known_big_sites = ['NCSA', 'TACC', 'CLEMSON', 'UTAH', 'MICH', 'WASH', 'DALL', 'UCSD', 'LBNL']
-        candidates = []
-        candidates.extend([s for s in known_big_sites if s in gpu_sites])
-        candidates.extend([s for s in gpu_sites if s not in known_big_sites])
-        candidates.extend([s for s in known_big_sites if s not in candidates])
-        candidates = list(dict.fromkeys([c for c in candidates if c]))
+        candidates = known_big_sites
         
-        print(f"Candidate Sites (in order): {candidates}")
+        print(f"Candidate Sites (in order): {candidates}", flush=True)
 
         # ---------------------------------------------------------
         # Deployment Loop
         # ---------------------------------------------------------
         slice = None
+        print("Starting deployment loop...", flush=True)
         for site in candidates:
-            print(f"\n--- Attempting deployment at {site} ---")
+            print(f"\n--- Attempting deployment at {site} ---", flush=True)
             try:
-                # Cleanup
-                try:
-                    existing = fablib.get_slice(name=SLICE_NAME)
-                    print(f"Deleting existing slice '{SLICE_NAME}'...")
-                    existing.delete()
-                    for i in range(10):
-                        try:
-                            fablib.get_slice(name=SLICE_NAME)
-                            time.sleep(5)
-                        except:
-                            break
-                except:
-                    pass
+                # Cleanup SKIPPED to avoid crash
+                # try:
+                #     existing = fablib.get_slice(name=SLICE_NAME)
+                #     print(f"Deleting existing slice '{SLICE_NAME}'...")
+                #     existing.delete()
+                #     for i in range(10):
+                #         try:
+                #             fablib.get_slice(name=SLICE_NAME)
+                #             time.sleep(5)
+                #         except:
+                #             break
+                # except:
+                #     pass
 
                 print(f"Creating slice '{SLICE_NAME}' at {site}...")
                 slice = fablib.new_slice(name=SLICE_NAME)
@@ -70,21 +102,31 @@ def deploy():
                 # 1. Add Nodes
                 image = 'default_ubuntu_22'
                 
-                # Generator (GPU)
-                print("Adding GPU Node...")
-                generator = slice.add_node(name='generator', site=site, image=image)
-                generator.set_capacities(cores=2, ram=8) # Default 10GB disk
-                generator.add_component(model='GPU_TeslaT4', name='gpu1')
+                # Server (Aggregator) - CPU Only
+                print("Adding Server Node...")
+                server = slice.add_node(name='server', site=site, image=image)
+                server.set_capacities(cores=4, ram=8)
                 
-                # Detector (CPU)
-                print("Adding CPU Node...")
-                detector = slice.add_node(name='detector', site=site, image=image)
-                detector.set_capacities(cores=2, ram=8)
+                # Client 1 (Trainer) - GPU + NVMe
+                print("Adding Client 1...")
+                client1 = slice.add_node(name='client1', site=site, image=image)
+                client1.set_capacities(cores=4, ram=16)
+                client1.add_component(model='GPU_TeslaT4', name='gpu1')
+                client1.add_component(model='NVME_Basic', name='nvme1')
 
-                # 2. Add Network
-                gen_iface = generator.add_component(model='NIC_Basic', name='nic1').get_interfaces()[0]
-                det_iface = detector.add_component(model='NIC_Basic', name='nic1').get_interfaces()[0]
-                slice.add_l2network(name='net_a', interfaces=[gen_iface, det_iface])
+                # Client 2 (Trainer) - GPU + NVMe
+                print("Adding Client 2...")
+                client2 = slice.add_node(name='client2', site=site, image=image)
+                client2.set_capacities(cores=4, ram=16)
+                client2.add_component(model='GPU_TeslaT4', name='gpu1')
+                client2.add_component(model='NVME_Basic', name='nvme1')
+
+                # 2. Add Network (L2 Bridge)
+                iface_server = server.add_component(model='NIC_Basic', name='nic1').get_interfaces()[0]
+                iface_c1 = client1.add_component(model='NIC_Basic', name='nic1').get_interfaces()[0]
+                iface_c2 = client2.add_component(model='NIC_Basic', name='nic1').get_interfaces()[0]
+                
+                slice.add_l2network(name='net_a', interfaces=[iface_server, iface_c1, iface_c2])
 
                 # 3. Submit
                 print("Submitting slice...")
@@ -109,121 +151,119 @@ def deploy():
         # ---------------------------------------------------------
         print("Reloading slice to get active node handles...")
         slice = fablib.get_slice(name=SLICE_NAME)
-        generator = slice.get_node('generator')
-        detector = slice.get_node('detector')
+        server = slice.get_node('server')
+        client1 = slice.get_node('client1')
+        client2 = slice.get_node('client2')
         
         subnet = ipaddress.IPv4Network("192.168.1.0/24")
-        gen_ip = ipaddress.IPv4Address("192.168.1.10")
-        det_ip = ipaddress.IPv4Address("192.168.1.11")
+        server_ip = ipaddress.IPv4Address("192.168.1.10")
+        c1_ip = ipaddress.IPv4Address("192.168.1.11")
+        c2_ip = ipaddress.IPv4Address("192.168.1.12")
 
-        gen_iface = generator.get_interface(network_name='net_a')
-        gen_iface.ip_addr_add(addr=gen_ip, subnet=subnet)
-        gen_iface.ip_link_up()
+        iface_server = server.get_interface(network_name='net_a')
+        iface_server.ip_addr_add(addr=server_ip, subnet=subnet)
+        iface_server.ip_link_up()
 
-        det_iface = detector.get_interface(network_name='net_a')
-        det_iface.ip_addr_add(addr=det_ip, subnet=subnet)
-        det_iface.ip_link_up()
+        iface_c1 = client1.get_interface(network_name='net_a')
+        iface_c1.ip_addr_add(addr=c1_ip, subnet=subnet)
+        iface_c1.ip_link_up()
+
+        iface_c2 = client2.get_interface(network_name='net_a')
+        iface_c2.ip_addr_add(addr=c2_ip, subnet=subnet)
+        iface_c2.ip_link_up()
 
         # ---------------------------------------------------------
-        # 5. Install Software
+        # 5. Configure Storage (NVMe)
         # ---------------------------------------------------------
-        print("Installing software...")
+        print("Configuring NVMe Storage...")
         slice.wait_ssh()
         
-        for node in [generator, detector]:
-            # Clean apt cache to save space
+        # Helper to format and mount NVMe
+        nvme_script = """
+        sudo parted -s /dev/nvme0n1 mklabel gpt
+        sudo parted -s /dev/nvme0n1 mkpart primary ext4 0% 100%
+        sudo mkfs.ext4 -F /dev/nvme0n1p1
+        sudo mkdir -p /mnt/storage
+        sudo mount /dev/nvme0n1p1 /mnt/storage
+        sudo chmod 777 /mnt/storage
+        """
+        for node in [client1, client2]:
+            try:
+                print(f"Configuring NVMe on {node.get_name()}...")
+                node.execute(nvme_script, quiet=False)
+                print("NVMe mounted at /mnt/storage")
+            except Exception as e:
+                print(f"Failed to configure NVMe on {node.get_name()}: {e}")
+
+        # ---------------------------------------------------------
+        # 6. Install Software
+        # ---------------------------------------------------------
+        print("Installing software...")
+        
+        # Common dependencies
+        for node in [server, client1, client2]:
             node.execute('sudo apt-get clean', quiet=True)
             node.execute('sudo apt-get update', quiet=False)
-            node.execute('sudo apt-get install -y iperf3', quiet=False)
-            
-            # Install pip (Robust method)
-            print(f"Installing pip on {node.get_name()}...")
             node.execute('sudo apt-get install -y python3-pip', quiet=False)
-            
-            # Verify pip and fallback to get-pip.py if needed
             try:
                 node.execute('python3 -m pip --version', quiet=False)
             except:
-                print("Pip not found via apt. Installing via get-pip.py...")
                 node.execute('curl -sS https://bootstrap.pypa.io/get-pip.py | sudo python3', quiet=False)
 
-        # Install GPU Drivers
-        # SKIP DRIVERS to save disk space (10GB limit). We will use CPU-only PyTorch.
-        print("\nSkipping NVIDIA Driver installation to save disk space...")
+        # Server Setup (CPU)
+        print("Setting up Server...")
+        server.execute('python3 -m pip install torch pandas', quiet=False)
+        server.upload_file('cpt_model.py', 'cpt_model.py')
+        server.upload_file('cellular_sim.py', 'cellular_sim.py')
+        server.upload_file('fl_server.py', 'fl_server.py')
+        server.upload_file('evaluate_metrics.py', 'evaluate_metrics.py')
 
-        # Install PyTorch (CPU Only)
-        print("\nInstalling PyTorch (CPU Only)...")
-        # CPU version is much smaller and fits in the 10GB disk
-        generator.execute('python3 -m pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu', quiet=False)
+        # Client Setup (GPU + NVMe)
+        print("Setting up Clients...")
+        env_vars = "export TMPDIR=/mnt/storage/tmp; mkdir -p $TMPDIR; "
+        python_path_setup = "export PYTHONPATH=$PYTHONPATH:/mnt/storage/pylib"
         
-        print("Verifying PyTorch...")
-        try:
-            generator.execute('python3 -c "import torch; print(f\'Torch version: {torch.__version__}, CUDA: {torch.cuda.is_available()}\')"', quiet=False)
-        except Exception as e:
-            print(f"WARNING: PyTorch verification failed: {e}")
+        for node in [client1, client2]:
+            # Drivers
+            node.execute(f"{env_vars} sudo apt-get install -y ubuntu-drivers-common && sudo ubuntu-drivers autoinstall", quiet=False)
+            
+            # PyTorch & Libs on NVMe
+            install_cmd = (
+                f"{env_vars} python3 -m pip install --target=/mnt/storage/pylib "
+                "torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118 "
+                "pandas scikit-learn"
+            )
+            node.execute(install_cmd, quiet=False)
+            
+            # Upload Scripts
+            node.upload_file('cpt_model.py', 'cpt_model.py')
+            node.upload_file('cellular_sim.py', 'cellular_sim.py')
+            node.upload_file('fl_client.py', 'fl_client.py')
+            node.upload_file('evaluate_metrics.py', 'evaluate_metrics.py')
 
         print("\nDeployment Successful!")
-        print(f"  ssh -i <slice_key> ubuntu@{generator.get_management_ip()}")
-        print(f"  ssh -i <slice_key> ubuntu@{detector.get_management_ip()}")
+        print(f"Server: ssh -i <slice_key> ubuntu@{server.get_management_ip()}")
+        print(f"Client1: ssh -i <slice_key> ubuntu@{client1.get_management_ip()}")
+        print(f"Client2: ssh -i <slice_key> ubuntu@{client2.get_management_ip()}")
 
         # ---------------------------------------------------------
-        # 6. Verification
+        # 7. Run Experiment
         # ---------------------------------------------------------
-        print("\nRunning Automated Verification...")
-        print("1. Ping Test")
-        try:
-            stdout, stderr = generator.execute('ping -c 4 192.168.1.11')
-            print(stdout)
-        except Exception as e:
-            print(f"Ping failed: {e}")
-
-        print("2. GPU Verification")
-        try:
-            stdout, stderr = generator.execute('nvidia-smi')
-            print(stdout)
-        except Exception as e:
-            print(f"GPU check failed (Expected if drivers skipped): {e}")
-
-        # ---------------------------------------------------------
-        # 7. Artifacts
-        # ---------------------------------------------------------
-        print("\nGenerating Research Artifacts...")
-        try:
-            print("Installing Data Science stack...")
-            generator.execute('python3 -m pip install --no-cache-dir pandas scipy matplotlib scikit-learn', quiet=False)
-            
-            print("Uploading scripts...")
-            generator.upload_file('simple_gan.py', 'simple_gan.py')
-            generator.upload_file('generate_artifacts.py', 'generate_artifacts.py')
-            
-            print("Training GAN...")
-            generator.execute('python3 simple_gan.py', quiet=False)
-            
-            print("Generating plots...")
-            generator.execute('python3 generate_artifacts.py', quiet=False)
-            
-            print("Downloading artifacts...")
-            if not os.path.exists('artifacts'):
-                os.makedirs('artifacts')
-            
-            files = ['fidelity_cdf.png', 'utility_table.png', 'efficiency_throughput.png']
-            for f in files:
-                remote_path = f'artifacts/{f}'
-                local_path = f'artifacts/{f}'
-                try:
-                    stdout, stderr = generator.execute(f'ls -l {remote_path} | awk "{{print \$5}}"', quiet=True)
-                    size = int(stdout.strip()) if stdout.strip().isdigit() else 0
-                    
-                    if size > 0:
-                        generator.download_file(local_path, remote_path)
-                        print(f"  Downloaded {f} ({size} bytes)")
-                    else:
-                        print(f"  Skipping {f}: Empty or missing.")
-                except Exception as e:
-                    print(f"  Failed to download {f}: {e}")
-                    
-        except Exception as e:
-            print(f"Artifact generation failed: {e}")
+        print("\nStarting Federated Learning Experiment...")
+        
+        # Start Server in background
+        print("Starting FL Server...")
+        server.execute("nohup python3 fl_server.py > server.log 2>&1 &", quiet=False)
+        time.sleep(5) # Wait for startup
+        
+        # Start Clients
+        print("Starting Client 1...")
+        client1.execute(f"{python_path_setup}; nohup python3 fl_client.py client_1 http://192.168.1.10:8000 > client.log 2>&1 &", quiet=False)
+        
+        print("Starting Client 2...")
+        client2.execute(f"{python_path_setup}; nohup python3 fl_client.py client_2 http://192.168.1.10:8000 > client.log 2>&1 &", quiet=False)
+        
+        print("\nExperiment Running! Check logs on nodes.")
 
     except Exception as e:
         print(f"Deployment failed: {e}")
