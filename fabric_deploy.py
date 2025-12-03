@@ -204,7 +204,10 @@ def deploy():
 
         # Server Setup (CPU)
         print("Setting up Server...")
-        server.execute('python3 -m pip install torch pandas', quiet=False)
+        # Install CPU version of torch to avoid size/compatibility issues
+        server.execute('python3 -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu', quiet=False)
+        server.execute('python3 -m pip install pandas', quiet=False)
+        
         server.upload_file('cpt_model.py', 'cpt_model.py')
         server.upload_file('cellular_sim.py', 'cellular_sim.py')
         server.upload_file('fl_server.py', 'fl_server.py')
@@ -213,6 +216,7 @@ def deploy():
         # Client Setup (GPU)
         print("Setting up Clients...")
         env_vars = f"export TMPDIR={storage_path}/tmp; mkdir -p $TMPDIR; "
+        # IMPORTANT: We must export PYTHONPATH for the session OR pass it inline
         python_path_setup = f"export PYTHONPATH=$PYTHONPATH:{storage_path}/pylib"
         
         for node in [client1, client2]:
@@ -220,6 +224,7 @@ def deploy():
             node.execute(f"{env_vars} sudo apt-get install -y ubuntu-drivers-common && sudo ubuntu-drivers autoinstall", quiet=False)
             
             # PyTorch (Custom Index)
+            # Install to local dir
             install_torch = (
                 f"{env_vars} python3 -m pip install --target={storage_path}/pylib "
                 "torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118"
@@ -233,6 +238,14 @@ def deploy():
             )
             node.execute(install_libs, quiet=False)
             
+            # Verify Installation
+            verify_cmd = f"PYTHONPATH=$PYTHONPATH:{storage_path}/pylib python3 -c 'import torch; print(torch.__version__)'"
+            try:
+                print(f"Verifying torch on {node.get_name()}...")
+                node.execute(verify_cmd, quiet=False)
+            except Exception as e:
+                print(f"WARNING: Torch verification failed on {node.get_name()}: {e}")
+
             # Upload Scripts
             node.upload_file('cpt_model.py', 'cpt_model.py')
             node.upload_file('cellular_sim.py', 'cellular_sim.py')
@@ -251,15 +264,17 @@ def deploy():
         
         # Start Server in background
         print("Starting FL Server...")
+        # Server uses default python path
         server.execute("nohup python3 fl_server.py > server.log 2>&1 &", quiet=False)
         time.sleep(10) # Wait for startup
         
         # Start Clients
+        # Pass PYTHONPATH explicitly to nohup command
         print("Starting Client 1...")
-        client1.execute(f"{python_path_setup}; nohup python3 fl_client.py client_1 http://192.168.1.10:8000 > client.log 2>&1 &", quiet=False)
+        client1.execute(f"PYTHONPATH=$PYTHONPATH:{storage_path}/pylib nohup python3 fl_client.py client_1 http://192.168.1.10:8000 > client.log 2>&1 &", quiet=False)
         
         print("Starting Client 2...")
-        client2.execute(f"{python_path_setup}; nohup python3 fl_client.py client_2 http://192.168.1.10:8000 > client.log 2>&1 &", quiet=False)
+        client2.execute(f"PYTHONPATH=$PYTHONPATH:{storage_path}/pylib nohup python3 fl_client.py client_2 http://192.168.1.10:8000 > client.log 2>&1 &", quiet=False)
         
         print("\nExperiment Running! Waiting 120s for completion...")
         time.sleep(120)
