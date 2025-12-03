@@ -112,14 +112,12 @@ def deploy():
                 client1 = slice.add_node(name='client1', site=site, image=image)
                 client1.set_capacities(cores=2, ram=8)
                 client1.add_component(model='GPU_TeslaT4', name='gpu1')
-                client1.add_component(model='NVME_P4510', name='nvme1')
 
                 # Client 2 (Trainer) - GPU + NVMe
                 print("Adding Client 2...")
                 client2 = slice.add_node(name='client2', site=site, image=image)
                 client2.set_capacities(cores=2, ram=8)
                 client2.add_component(model='GPU_TeslaT4', name='gpu1')
-                client2.add_component(model='NVME_P4510', name='nvme1')
 
                 # 2. Add Network (L2 Bridge)
                 iface_server = server.add_component(model='NIC_Basic', name='nic1').get_interfaces()[0]
@@ -173,27 +171,21 @@ def deploy():
         iface_c2.ip_link_up()
 
         # ---------------------------------------------------------
-        # 5. Configure Storage (NVMe)
+        # 5. Configure Storage (Local)
         # ---------------------------------------------------------
-        print("Configuring NVMe Storage...")
+        print("Configuring Local Storage...")
         slice.wait_ssh()
         
-        # Helper to format and mount NVMe
-        nvme_script = """
-        sudo parted -s /dev/nvme0n1 mklabel gpt
-        sudo parted -s /dev/nvme0n1 mkpart primary ext4 0% 100%
-        sudo mkfs.ext4 -F /dev/nvme0n1p1
-        sudo mkdir -p /mnt/storage
-        sudo mount /dev/nvme0n1p1 /mnt/storage
-        sudo chmod 777 /mnt/storage
-        """
+        # Use a local directory instead of NVMe
+        storage_path = "/home/ubuntu/project_data"
+        setup_script = f"mkdir -p {storage_path} && chmod 777 {storage_path}"
+        
         for node in [client1, client2]:
             try:
-                print(f"Configuring NVMe on {node.get_name()}...")
-                node.execute(nvme_script, quiet=False)
-                print("NVMe mounted at /mnt/storage")
+                print(f"Configuring storage on {node.get_name()}...")
+                node.execute(setup_script, quiet=False)
             except Exception as e:
-                print(f"Failed to configure NVMe on {node.get_name()}: {e}")
+                print(f"Failed to configure storage on {node.get_name()}: {e}")
 
         # ---------------------------------------------------------
         # 6. Install Software
@@ -218,18 +210,18 @@ def deploy():
         server.upload_file('fl_server.py', 'fl_server.py')
         server.upload_file('evaluate_metrics.py', 'evaluate_metrics.py')
 
-        # Client Setup (GPU + NVMe)
+        # Client Setup (GPU)
         print("Setting up Clients...")
-        env_vars = "export TMPDIR=/mnt/storage/tmp; mkdir -p $TMPDIR; "
-        python_path_setup = "export PYTHONPATH=$PYTHONPATH:/mnt/storage/pylib"
+        env_vars = f"export TMPDIR={storage_path}/tmp; mkdir -p $TMPDIR; "
+        python_path_setup = f"export PYTHONPATH=$PYTHONPATH:{storage_path}/pylib"
         
         for node in [client1, client2]:
             # Drivers
             node.execute(f"{env_vars} sudo apt-get install -y ubuntu-drivers-common && sudo ubuntu-drivers autoinstall", quiet=False)
             
-            # PyTorch & Libs on NVMe
+            # PyTorch & Libs
             install_cmd = (
-                f"{env_vars} python3 -m pip install --target=/mnt/storage/pylib "
+                f"{env_vars} python3 -m pip install --target={storage_path}/pylib "
                 "torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118 "
                 "pandas scikit-learn"
             )
