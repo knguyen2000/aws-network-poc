@@ -219,13 +219,19 @@ def deploy():
             # Drivers
             node.execute(f"{env_vars} sudo apt-get install -y ubuntu-drivers-common && sudo ubuntu-drivers autoinstall", quiet=False)
             
-            # PyTorch & Libs
-            install_cmd = (
+            # PyTorch (Custom Index)
+            install_torch = (
                 f"{env_vars} python3 -m pip install --target={storage_path}/pylib "
-                "torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118 "
+                "torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118"
+            )
+            node.execute(install_torch, quiet=False)
+
+            # Other Libs (Default Index)
+            install_libs = (
+                f"{env_vars} python3 -m pip install --target={storage_path}/pylib "
                 "pandas scikit-learn"
             )
-            node.execute(install_cmd, quiet=False)
+            node.execute(install_libs, quiet=False)
             
             # Upload Scripts
             node.upload_file('cpt_model.py', 'cpt_model.py')
@@ -246,7 +252,7 @@ def deploy():
         # Start Server in background
         print("Starting FL Server...")
         server.execute("nohup python3 fl_server.py > server.log 2>&1 &", quiet=False)
-        time.sleep(5) # Wait for startup
+        time.sleep(10) # Wait for startup
         
         # Start Clients
         print("Starting Client 1...")
@@ -255,7 +261,27 @@ def deploy():
         print("Starting Client 2...")
         client2.execute(f"{python_path_setup}; nohup python3 fl_client.py client_2 http://192.168.1.10:8000 > client.log 2>&1 &", quiet=False)
         
-        print("\nExperiment Running! Check logs on nodes.")
+        print("\nExperiment Running! Waiting 120s for completion...")
+        time.sleep(120)
+
+        # ---------------------------------------------------------
+        # 8. Retrieve Artifacts
+        # ---------------------------------------------------------
+        print("Retrieving logs and results...")
+        try:
+            server.download_file('server.log', 'server.log')
+            client1.download_file('client1.log', 'client.log')
+            client2.download_file('client2.log', 'client.log')
+            
+            # Download CSVs if they exist
+            # Note: fablib download_file might fail if file doesn't exist, so wrap in try/except
+            for node, name in [(server, 'server'), (client1, 'client1'), (client2, 'client2')]:
+                try:
+                    node.download_file(f'gen_data_{name}.csv', f'gen_data_{name}.csv')
+                except:
+                    pass
+        except Exception as e:
+            print(f"Warning: Failed to download some artifacts: {e}")
 
     except Exception as e:
         print(f"Deployment failed: {e}")
